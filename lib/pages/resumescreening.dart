@@ -14,9 +14,17 @@ class ResumeScreeningPage extends StatefulWidget {
 }
 
 class _ResumeScreeningPageState extends State<ResumeScreeningPage> {
+  final TextEditingController _jobDescController = TextEditingController();
   List<Map<String, dynamic>> resumes = [];
 
   Future<void> uploadResume() async {
+    if (_jobDescController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a job description.')),
+      );
+      return;
+    }
+
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
@@ -27,7 +35,6 @@ class _ResumeScreeningPageState extends State<ResumeScreeningPage> {
       String fileName = result.files.single.name;
       Uint8List? fileBytes = result.files.single.bytes;
 
-      // Fallback for non-web
       if (fileBytes == null && !kIsWeb) {
         final filePath = result.files.single.path!;
         final file = io.File(filePath);
@@ -41,12 +48,11 @@ class _ResumeScreeningPageState extends State<ResumeScreeningPage> {
         return;
       }
 
-      // ✅ Use correct backend IP from your Flask output (e.g. 192.168.1.24)
-      var uri = Uri.parse('http://192.168.1.24:5000/upload_resume');
+      var uri = Uri.parse('http://192.168.1.24:5000/upload_resume'); // use your actual IP
       var request = http.MultipartRequest('POST', uri);
 
       request.files.add(http.MultipartFile.fromBytes('file', fileBytes, filename: fileName));
-      request.fields['job_description'] = 'Software Developer'; // Or get from user input
+      request.fields['job_description'] = _jobDescController.text;
 
       var response = await request.send();
 
@@ -61,6 +67,9 @@ class _ResumeScreeningPageState extends State<ResumeScreeningPage> {
             'status': 'Pending',
             'role': 'Candidate',
           });
+
+          // Sort resumes by score descending
+          resumes.sort((a, b) => (b['score'] as double).compareTo(a['score'] as double));
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -82,27 +91,53 @@ class _ResumeScreeningPageState extends State<ResumeScreeningPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Resume Screening")),
-      body: Column(
-        children: [
-          ElevatedButton.icon(
-            onPressed: uploadResume,
-            icon: const Icon(Icons.upload),
-            label: const Text("Upload Resume"),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: resumes.length,
-              itemBuilder: (context, index) {
-                var resume = resumes[index];
-                return ListTile(
-                  title: Text(resume['name']),
-                  subtitle: Text('Score: ${resume['score']}'),
-                  trailing: Text(resume['status']),
-                );
-              },
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Enter Job Description:",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: _jobDescController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: "E.g. Looking for a Flutter Developer with API experience...",
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: uploadResume,
+              icon: const Icon(Icons.upload),
+              label: const Text("Upload Resume & Rank"),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: resumes.isEmpty
+                  ? const Center(child: Text("No resumes uploaded yet."))
+                  : ListView.builder(
+                itemCount: resumes.length,
+                itemBuilder: (context, index) {
+                  var resume = resumes[index];
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    child: ListTile(
+                      title: Text(resume['name']),
+                      subtitle: Text('Score: ${resume['score']}%'),
+                      trailing: Text(resume['status']),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
